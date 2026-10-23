@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Global AI Capacity Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>
+/* Layout: operations console — sticky header with tabs, summary tiles, then chart, heatmap, and drill-down lists */
+:root{
+  --bg:#F2F4F7; --surface:#FFFFFF; --sunk:#E8ECF1; --line:#D6DCE4; --fg:#122031; --muted:#596778;
+  --accent:#1D4F91; --accent-soft:#DCE6F4; --short:#C03A28; --over:#B5730F; --ok:#2B7A54; --on-strong:#FFFFFF; --won-bg:#F6DDD9; --scrim:rgba(18,32,49,.4);
+  --font-ui:'Schibsted Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-num:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  --r:6px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0D131A; --surface:#141C25; --sunk:#1B2530; --line:#283441; --fg:#E4EAF1; --muted:#93A1B1;
+  --accent:#7AA8E6; --accent-soft:#1E3352; --short:#EE7A63; --over:#E2AE4A; --ok:#5CBF8B; --on-strong:#0D131A; --won-bg:#3A221F; --scrim:rgba(0,0,0,.55); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0D131A; --surface:#141C25; --sunk:#1B2530; --line:#283441; --fg:#E4EAF1; --muted:#93A1B1;
+  --accent:#7AA8E6; --accent-soft:#1E3352; --short:#EE7A63; --over:#E2AE4A; --ok:#5CBF8B; --on-strong:#0D131A; --won-bg:#3A221F; --scrim:rgba(0,0,0,.55); color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-ui);font-size:14px;line-height:1.45}
+.num,td.n,.mono{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:12.5px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.wrap{max-width:1320px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-block:12px 0}
+.brand{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brand h1{font-size:18px;font-weight:700;margin:0;letter-spacing:-.01em}
+.sample{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--over);border:1px solid currentColor;border-radius:999px;padding:1px 8px}
+.top .sp{flex:1}
+nav{display:flex;gap:2px;overflow-x:auto;margin-top:8px}
+nav button{background:none;border:0;border-bottom:2px solid transparent;color:var(--muted);font:600 13.5px var(--font-ui);padding:10px 12px;cursor:pointer;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--fg);border-bottom-color:var(--accent)}
+nav button .ct{font:500 11px var(--font-num);color:var(--muted);margin-left:5px}
+main{padding-block:20px 60px}
+.btn{font:600 13px var(--font-ui);border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:var(--r);padding:7px 12px;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-strong)}
+.btn.danger{color:var(--short)}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+button:focus-visible,select:focus-visible,input:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:end;margin-bottom:16px}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld>span{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+select,input[type=text],input[type=date],input[type=number],input[type=search]{font:14px var(--font-ui);color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;min-width:0;max-width:100%}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;color:var(--muted);font:600 12.5px var(--font-ui);padding:8px 10px;cursor:pointer;white-space:nowrap}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--fg)}
+.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:18px}
+@media (max-width:860px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;min-width:0}
+.tile .k{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.tile .v{font:500 24px var(--font-num);margin-top:4px;letter-spacing:-.02em}
+.tile .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.tile.alert .v{color:var(--short)}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;margin-bottom:18px;min-width:0}
+.panel h2{font-size:15px;margin:0;font-weight:700;text-wrap:balance}
+.ph{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.hint{font-size:12.5px;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);white-space:nowrap;background:var(--surface)}
+td{padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+td.n,th.n{text-align:right;white-space:nowrap}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover td{background:var(--sunk)}
+.heat th:first-child,.heat td:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
+.heat td.c{text-align:center;font:500 12px var(--font-num);padding:8px 4px;min-width:58px;cursor:pointer;border-left:2px solid var(--surface);border-bottom:2px solid var(--surface)}
+.heat td.c.sel{outline:2px solid var(--fg);outline-offset:-2px}
+.heat td.g{font-weight:600;white-space:nowrap;padding-right:14px}
+.heat td.g small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+.heat tr.tot td{font-weight:700}
+.chip{display:inline-block;font-size:11.5px;padding:1px 7px;border-radius:999px;background:var(--sunk);color:var(--muted);margin:1px 3px 1px 0;white-space:nowrap}
+.st{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:999px;white-space:nowrap}
+.st.Booked{background:var(--accent-soft);color:var(--accent)}
+.st.Won{background:var(--won-bg);color:var(--short)}
+.st.Pipeline{background:var(--sunk);color:var(--muted)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+@media (max-width:860px){.two{grid-template-columns:minmax(0,1fr)}}
+.two>.panel{margin-bottom:0}
+.meter{display:inline-block;width:46px;height:6px;background:var(--sunk);border-radius:3px;vertical-align:middle;margin-right:6px;overflow:hidden}
+.meter b{display:block;height:100%;background:var(--accent)}
+.meter b.overbooked{background:var(--short)}
+.empty{color:var(--muted);padding:12px 0}
+.more{color:var(--muted);font-size:12.5px;padding-top:8px}
+svg text{fill:var(--muted);font-family:var(--font-num);font-size:11px}
+/* drawer */
+.ov{position:fixed;inset:0;background:var(--scrim);z-index:20}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--surface);z-index:21;display:flex;flex-direction:column;border-left:1px solid var(--line);
+  padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.dh{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.dh h3{margin:0;font-size:16px}
+.db{flex:1;overflow-y:auto;padding:16px 18px;display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+.db .full{grid-column:1/-1}
+.db .fld input,.db .fld select{width:100%}
+.df{display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--line);flex-wrap:wrap}
+.df .sp{flex:1}
+.skills{display:flex;flex-direction:column;gap:8px}
+.skills .cat{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;font-weight:600}
+.tog{display:inline-flex;align-items:center;gap:4px;font-size:12.5px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;cursor:pointer;margin:0 4px 4px 0;user-select:none}
+.tog input{position:absolute;opacity:0;pointer-events:none}
+.tog.on{background:var(--accent-soft);border-color:var(--accent);color:var(--fg)}
+.tog:focus-within{outline:2px solid var(--accent)}
+.errbar{background:var(--won-bg);color:var(--short);padding:10px 14px;border-radius:6px;margin-bottom:14px;font-weight:600}
+.err{color:var(--short);font-size:12.5px;grid-column:1/-1}
+.ref{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.ref .panel{margin-bottom:0}
+.ref ul{list-style:none;margin:0 0 10px;padding:0}
+.ref li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+.addrow{display:flex;gap:8px}
+.addrow input{flex:1}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:var(--r);font-weight:600;z-index:30}
+@media (prefers-reduced-motion:no-preference){.drawer{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}}}
+/* engagement list */
+.eng{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:10px;min-width:0}
+.eng.open{border-color:var(--muted)}
+.eh{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:10px 14px}
+.eh .t{flex:1 1 280px;min-width:0;display:flex;gap:10px;align-items:flex-start;cursor:pointer;background:none;border:0;text-align:left;color:inherit;font:inherit;padding:2px 0}
+.eh .t b{display:block;font-size:14.5px}
+.caret{display:inline-block;width:12px;color:var(--muted);transition:transform .15s;margin-top:2px}
+.eng.open .caret{transform:rotate(90deg)}
+.eh .meta{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.eh select{padding:5px 7px;font-size:13px}
+.fill{font:500 12px var(--font-num);padding:2px 8px;border-radius:999px;background:var(--sunk);white-space:nowrap}
+.fill.full{color:var(--ok)} .fill.part{color:var(--over)} .fill.none{color:var(--short)}
+.eb{border-top:1px solid var(--line);padding:10px 14px 14px}
+.grid td{padding:4px 4px;vertical-align:middle}
+.grid th{padding:6px 4px}
+.grid select,.grid input{padding:5px 6px;font-size:13px}
+.grid input[type=number]{width:62px}
+.grid input[type=date]{width:136px}
+.grid .sk{cursor:pointer;min-width:110px}
+.grid .sk:hover .chip{background:var(--accent-soft)}
+.ebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+.ebar select{padding:6px 8px;font-size:13px}
+textarea{font:13px var(--font-num);color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:8px;width:100%;min-height:180px}
+.cand{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line)}
+.cand .who{flex:1;min-width:0}
+.ok{color:var(--ok)}
+.summary{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:12px;color:var(--muted);font-size:13px}
+.summary b{color:var(--fg);font-family:var(--font-num);font-weight:500}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div class="brand"><h1>Global AI Capacity Planner</h1><span class="sample">Sample data</span></div>
+      <div class="sp"></div>
+      <button class="btn ghost" data-act="reset" id="resetBtn">Reset sample data</button>
+    </div>
+    <nav id="tabs" role="tablist"></nav>
+  </div>
+</header>
+<main class="wrap" id="main"></main>
+<div id="layer"></div>
+
+<script>
+/* ---------- reference data ---------- */
+const ENG='AI Engineer',FDE='AI Forward Deployed Engineer',ARCH='AI Architect',CONS='AI Business Consultant',DL='AI Delivery Lead',TEST='AI Tester',DATA='Data Engineer';
+const TPL={
+  S_on:[[DL,'Senior',0.5,1],[ARCH,'Senior',0.5,1],[ENG,'Mid',1,1],[ENG,'Senior',1,1],[FDE,'Senior',1,1],[CONS,'Mid',1,1]],
+  M_on:[[DL,'Senior',1,1],[ARCH,'Principal',1,1],[CONS,'Senior',1,1],[ENG,'Senior',1,1],[ENG,'Mid',1,2],[FDE,'Senior',1,1],[TEST,'Mid',1,1]],
+  S_off:[[ENG,'Mid',1,1],[ENG,'Junior',1,2],[TEST,'Mid',1,1]],
+  M_off:[[ENG,'Mid',1,6],[ENG,'Junior',1,4],[ENG,'Senior',1,1],[DATA,'Mid',1,3],[TEST,'Mid',1,2],[TEST,'Junior',1,1],[DL,'Mid',1,1]],
+  L_off:[[ENG,'Mid',1,12],[ENG,'Junior',1,8],[ENG,'Senior',1,3],[ENG,'Graduate',1,2],[DATA,'Mid',1,6],[DATA,'Junior',1,3],[TEST,'Mid',1,4],[TEST,'Junior',1,3],[DL,'Senior',1,1],[ARCH,'Senior',1,1]]
+};
+TPL.L_on=[...TPL.M_on,[ENG,'Mid',1,1],[ENG,'Junior',1,1],[FDE,'Mid',1,1],[ARCH,'Senior',1,1],[CONS,'Mid',1,1],[DATA,'Senior',1,1]];
+function aggTpl(k){const m=new Map();for(const[role,grade,fte,qty]of TPL[k]){const key=role+'|'+grade+'|'+fte;if(m.has(key))m.get(key).qty+=qty;else m.set(key,{role,grade,fte,qty})}return[...m.values()]}
+function defaultRef(){return{
+  roles:[ENG,FDE,ARCH,CONS,DL,TEST,DATA],
+  grades:['Graduate','Junior','Mid','Senior','Principal'],
+  skills:{Cloud:['AWS','Azure','GCP'],Platform:['Amazon Bedrock','Azure AI Foundry','Copilot Studio','Vertex AI','Databricks','LangGraph'],Domain:['Financial services','Insurance','Public sector','Telco','Healthcare','Energy & utilities','Manufacturing','Retail & logistics']},
+  stages:[{name:'Qualify',prob:10},{name:'Propose',prob:30},{name:'Shortlisted',prob:60},{name:'Verbal',prob:90},{name:'Won',prob:100}],
+  locations:['UK','US','Germany','Portugal','India'],
+  pools:['In-country','Ring-fenced (UK)','Global delivery pool'],
+  templates:[['Small onshore team','S_on','home'],['Medium onshore team','M_on','home'],['Large onshore team','L_on','home'],['Small offshore pod','S_off','India'],['Medium offshore pod','M_off','India'],['Large offshore pod','L_off','India']].map(([name,k,loc])=>({name,loc,lines:aggTpl(k)})),
+  util:100
+}}
+const TECH=[ENG,FDE,ARCH,DATA];
+
+/* ---------- dates ---------- */
+const toDay=s=>{if(!s)return null;const[y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)/864e5};
+const iso=n=>new Date(n*864e5).toISOString().slice(0,10);
+const _t=new Date();const TODAY=Date.UTC(_t.getFullYear(),_t.getMonth(),_t.getDate())/864e5;
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const fmtDate=s=>{if(!s)return'';const d=new Date(toDay(s)*864e5);return d.getUTCDate()+' '+MON[d.getUTCMonth()]+' '+String(d.getUTCFullYear()).slice(2)};
+function buildMonths(n){const d=new Date(TODAY*864e5);let y=d.getUTCFullYear(),m=d.getUTCMonth();const out=[];
+  for(let i=0;i<n;i++){const s=Date.UTC(y,m,1)/864e5,e=Date.UTC(y,m+1,1)/864e5-1;out.push({s,e,days:e-s+1,label:MON[m]+' '+String(y).slice(2)});m++;if(m>11){m=0;y++}}return out}
+function overlap(start,end,a,b){const s=Math.max(start?toDay(start):a,a),e=Math.min(end?toDay(end):b,b);return Math.max(0,e-s+1)}
+const frac=(start,end,m)=>overlap(start,end,m.s,m.e)/m.days;
+
+/* ---------- seeded sample data ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const NAMES={
+  UK:[['Oliver','Amelia','Harry','Isla','Jack','Ava','George','Emily','Noah','Sophie','Charlie','Grace','Thomas','Lucy','James','Chloe','Ciaran','Niamh','Aoife','Declan'],['Taylor','Walsh','Patel','Hughes','Clarke','Evans','Murphy','Wright','Khan','Bennett','Shaw','Doyle','Price','Reid','Ahmed','Lawson','Quinn','Barker']],
+  US:[['Michael','Jessica','David','Ashley','Chris','Megan','Brandon','Lauren','Tyler','Rachel','Jordan','Kayla','Marcus','Priya','Kevin','Danielle','Andre','Nicole','Ryan','Monica'],['Johnson','Garcia','Miller','Davis','Rodriguez','Martinez','Anderson','Thompson','Robinson','Nguyen','Kim','Carter','Brooks','Ramirez','Coleman','Foster','Hayes','Bell']],
+  Germany:[['Lukas','Anna','Felix','Lea','Jonas','Laura','Leon','Sophie','Paul','Marie','Tobias','Katrin'],['Müller','Schmidt','Schneider','Fischer','Weber','Wagner','Becker','Hoffmann','Koch','Richter']],
+  Portugal:[['João','Inês','Tiago','Beatriz','Rui','Mariana','Pedro','Catarina','Miguel','Sofia','Diogo','Rita'],['Silva','Santos','Ferreira','Pereira','Oliveira','Costa','Rodrigues','Martins','Sousa','Gomes']],
+  India:[['Arjun','Priya','Rahul','Ananya','Vikram','Sneha','Karthik','Divya','Rohan','Pooja','Aditya','Kavya','Suresh','Meera','Nikhil','Lakshmi','Sanjay','Deepa','Varun','Shreya','Harish','Nisha','Manoj','Swati','Ravi','Anjali'],['Sharma','Reddy','Iyer','Nair','Gupta','Rao','Menon','Kulkarni','Joshi','Pillai','Agarwal','Mehta','Krishnan','Banerjee','Desai','Verma','Chatterjee','Shetty','Bose','Hegde']]
+};
+// account, sector, engagement, stage, start, end, cloud, home, onshore template, offshore template
+const ENGAGEMENTS=[
+  ['Northbank Insurance','Insurance','Claims triage agents','Won','2026-06-01','2027-03-31','AWS','UK','M_on','M_off'],
+  ['Halden Bank','Financial services','KYC document agent','Won','2026-08-03','2027-01-29','Azure','UK','S_on','S_off'],
+  ['Civic Data Office','Public sector','Service desk agents','Won','2026-09-01','2027-06-30','Azure','UK','S_on','L_off'],
+  ['Granite Federal Bank','Financial services','Fraud ops copilot','Won','2026-05-04','2027-04-30','AWS','US','L_on','L_off'],
+  ['Lakeshore Health','Healthcare','Clinical documentation AI','Won','2026-07-01','2027-06-30','Azure','US','L_on','L_off'],
+  ['Redwood Telecom','Telco','Network ops agent','Won','2026-08-17','2027-02-26','GCP','US','M_on','L_off'],
+  ['Cascade Mutual','Insurance','Underwriting assistant','Won','2026-09-01','2027-05-28','AWS','US','M_on','S_off'],
+  ['Summit Logistics','Retail & logistics','Agentic finance close','Won','2026-10-01','2027-01-29','Azure','US','S_on',null],
+  ['Rheinland Versicherung','Insurance','Policy servicing automation','Won','2026-06-15','2027-03-31','Azure','Germany','M_on','M_off'],
+  ['Hansa Energie','Energy & utilities','Knowledge assistant rollout','Won','2026-09-14','2027-01-29','Azure','Germany','S_on',null],
+  ['Atlântico Seguros','Insurance','Contact centre copilot','Won','2026-07-01','2027-04-30','Azure','Portugal','M_on','S_off'],
+  ['Lusitel','Telco','Customer service AI','Won','2026-09-07','2027-02-26','Azure','Portugal','S_on',null],
+  ['Redwood Telecom','Telco','Network ops extension','Won','2026-12-01','2027-05-28','GCP','US','S_on','S_off'],
+  ['Northbank Insurance','Insurance','Claims triage phase 2','Won','2027-04-01','2027-12-31','AWS','UK','M_on','M_off'],
+  ['Albion Mutual','Insurance','Underwriting assistant','Verbal','2026-12-01','2027-08-31','AWS','UK','M_on','M_off'],
+  ['Meridian Telecom','Telco','Network operations agents','Shortlisted','2027-01-11','2027-12-31','Azure','UK','L_on','L_off'],
+  ['Severn Energy','Energy & utilities','Field service copilot','Propose','2027-02-01','2027-07-30','Azure','UK','S_on','S_off'],
+  ['Halden Bank','Financial services','AML investigations agent','Qualify','2027-04-05','2027-12-31','Azure','UK','M_on','M_off'],
+  ['Granite Federal Bank','Financial services','Fraud ops phase 2','Verbal','2027-05-03','2028-01-31','AWS','US','L_on','L_off'],
+  ['Lakeshore Health','Healthcare','Revenue cycle agents','Shortlisted','2027-02-01','2027-10-29','Azure','US','M_on','M_off'],
+  ['Summit Logistics','Retail & logistics','AI platform managed service','Propose','2027-02-15','2028-02-14','Azure','US','S_on','M_off'],
+  ['Brightline Retail','Retail & logistics','Merchandising AI','Qualify','2027-03-01','2027-09-30','GCP','US','M_on','S_off'],
+  ['Nordwerk Automotive','Manufacturing','Engineering knowledge agent','Shortlisted','2027-01-18','2027-09-30','Azure','Germany','M_on','M_off'],
+  ['Rheinland Versicherung','Insurance','Claims agent rollout','Propose','2027-04-01','2027-12-31','Azure','Germany','S_on','S_off'],
+  ['Lusitel','Telco','Billing disputes agent','Verbal','2027-01-04','2027-06-30','Azure','Portugal','S_on','S_off'],
+  ['Atlântico Seguros','Insurance','Underwriting copilot','Propose','2027-05-03','2027-10-29','Azure','Portugal','S_on',null]
+];
+function seed(){
+  const R=mulberry32(20261022),ref=defaultRef();
+  const pick=a=>a[Math.floor(R()*a.length)];
+  const pickW=o=>{const t=Object.values(o).reduce((a,b)=>a+b,0);let r=R()*t;for(const k in o){r-=o[k];if(r<=0)return k}return Object.keys(o)[0]};
+  const quota=(w,n)=>{const t=Object.values(w).reduce((a,b)=>a+b,0);const rows=Object.entries(w).map(([k,v])=>({k,x:v/t*n}));rows.forEach(r=>r.c=Math.floor(r.x));
+    let left=n-rows.reduce((a,r)=>a+r.c,0);rows.slice().sort((a,b)=>(b.x-b.c)-(a.x-a.c)).forEach(r=>{if(left>0){r.c++;left--}});
+    const out=[];rows.forEach(r=>{for(let i=0;i<r.c;i++)out.push(r.k)});for(let i=out.length-1;i>0;i--){const j=Math.floor(R()*(i+1));[out[i],out[j]]=[out[j],out[i]]}return out};
+  const ON_ROLES={[ENG]:34,[FDE]:14,[ARCH]:12,[CONS]:12,[DL]:12,[TEST]:6,[DATA]:10};
+  const OFF_ROLES={[ENG]:53,[FDE]:2,[ARCH]:3,[CONS]:2,[DL]:4,[TEST]:17,[DATA]:19};
+  const ON_G={Graduate:4,Junior:10,Mid:32,Senior:40,Principal:14},OFF_G={Graduate:10,Junior:32,Mid:38,Senior:15,Principal:5},RF_G={Junior:25,Mid:50,Senior:25};
+  const groups=[['UK','In-country',20,ON_ROLES,ON_G],['US','In-country',60,ON_ROLES,ON_G],['Germany','In-country',10,ON_ROLES,ON_G],['Portugal','In-country',15,ON_ROLES,ON_G],
+    ['India','Ring-fenced (UK)',8,OFF_ROLES,RF_G],['India','Global delivery pool',300,OFF_ROLES,OFF_G]];
+  const people=[],usedNames=new Set();let pid=1;
+  for(const[loc,pool,n,rw,gw]of groups){
+    const roles=quota(rw,n);const nm=NAMES[loc];
+    for(const role of roles){
+      let grade=pickW(gw);
+      if([ARCH,DL,CONS].includes(role)&&(grade==='Graduate'||grade==='Junior'))grade=R()<.5?'Mid':'Senior';
+      let name;do{name=pick(nm[0])+' '+pick(nm[1])}while(usedNames.has(name));usedNames.add(name);
+      const skills=[];const tech=[ENG,FDE,ARCH,DATA,TEST].includes(role);
+      if(tech){const cloud=pickW(loc==='US'?{AWS:45,Azure:40,GCP:15}:loc==='India'?{Azure:45,AWS:40,GCP:15}:{Azure:55,AWS:35,GCP:10});skills.push(cloud);
+        const plat={AWS:'Amazon Bedrock',Azure:R()<.6?'Azure AI Foundry':'Copilot Studio',GCP:'Vertex AI'}[cloud];
+        if(role!==TEST&&R()<.7)skills.push(plat);if(role===DATA&&R()<.5)skills.push('Databricks');
+        if([ENG,FDE,ARCH].includes(role)&&R()<.3)skills.push('LangGraph');
+        if(role===ARCH&&R()<.35){const o=pick(['AWS','Azure','GCP'].filter(c=>c!==cloud));skills.push(o)}}
+      if(role===CONS||role===DL||(role===ARCH&&R()<.4)){const d=ref.skills.Domain;skills.push(pick(d));if(R()<.5){const d2=pick(d);if(!skills.includes(d2))skills.push(d2)}}
+      const r1=R(),r2=R();
+      people.push({id:'P'+(pid++),name,role,grade,loc,pool,skills,cap:R()<.08?pick([0.5,0.6,0.8]):1,
+        start:r1<.06?iso(Math.floor(toDay('2026-11-16')+R()*90)):iso(Math.floor(toDay('2019-02-01')+R()*(toDay('2026-09-01')-toDay('2019-02-01')))),
+        end:r2<.05?iso(Math.floor(toDay('2027-01-15')+R()*120)):''});
+    }
+  }
+  const engagements=[],lines=[],bookings=[];let lid=1,bid=1;const used=new Set();const gi=g=>ref.grades.indexOf(g);
+  ENGAGEMENTS.forEach((e,ei)=>{
+    const[account,sector,name,stage,start,end,cloud,home,on,off]=e;const id='E'+(ei+1);
+    const opp='OPP-'+String(260000+ei*137+Math.floor(R()*90)).padStart(6,'0');
+    engagements.push({id,account,name,opp,stage,prob:null,start,end,home});
+    const assign=stage==='Won'&&toDay(start)<=TODAY+10;
+    const add=(k,loc)=>{if(!k)return;for(const a of aggTpl(k)){
+      const skills=TECH.includes(a.role)?[cloud]:(a.role===CONS||a.role===DL)?[sector]:[];
+      const l={id:'L'+(lid++),engId:id,role:a.role,grade:a.grade,skills,loc,qty:a.qty,fte:a.fte,start,end};lines.push(l);
+      if(!assign)continue;
+      for(let s=0;s<a.qty;s++){
+        if(R()<.05)continue;let best=null,bs=-1;
+        for(const p of people){
+          if(used.has(p.id)||p.role!==l.role||p.loc!==l.loc||toDay(p.start)>TODAY)continue;
+          if(l.loc==='India'&&!(p.pool==='Global delivery pool'||(p.pool==='Ring-fenced (UK)'&&home==='UK')))continue;
+          const gd=Math.abs(gi(p.grade)-gi(l.grade));if(gd>1)continue;
+          const sc=(gd===0?3:0)+(l.skills.some(k=>p.skills.includes(k))?2:0)+(p.pool==='Ring-fenced (UK)'?2:0)+(p.cap>=l.fte?1:0)+R()*.5;
+          if(sc>bs){bs=sc;best=p}
+        }
+        if(best){used.add(best.id);bookings.push({id:'B'+(bid++),lineId:l.id,personId:best.id,fte:l.fte,start,end})}
+      }}};
+    add(on,home);add(off,'India');
+  });
+  return{v:2,ref,people,engagements,lines,bookings};
+}
+
+/* ---------- calculations ---------- */
+function index(S){const eng=new Map(S.engagements.map(e=>[e.id,e])),line=new Map(S.lines.map(l=>[l.id,l])),byLine=new Map(),byPerson=new Map(),byEng=new Map();
+  const push=(m,k,v)=>{let a=m.get(k);if(!a)m.set(k,a=[]);a.push(v)};
+  for(const b of S.bookings){push(byLine,b.lineId,b);push(byPerson,b.personId,b)}for(const l of S.lines)push(byEng,l.engId,l);
+  return{eng,line,byLine,byPerson,byEng}}
+function stageProb(S,name){const s=S.ref.stages.find(x=>x.name===name);return s?s.prob:0}
+function prob(S,e){if(e.stage==='Won')return 100;return e.prob!=null&&e.prob!==''?+e.prob:stageProb(S,e.stage)}
+function matcher(f){return x=>(!f.loc||x.loc===f.loc)&&(!f.role||x.role===f.role)&&(!f.grade||x.grade===f.grade)&&(!f.skill||x.skills.includes(f.skill))}
+function groupOf(f,x){return f.group==='roleGrade'?x.role+'|'+x.grade:f.group==='loc'?x.loc:x.role}
+// demand of a line in month: booked FTE, then remaining open FTE counted as won-unfilled or (weighted) pipeline
+function lineMonth(S,I,l,mo,measure){const e=I.eng.get(l.engId);if(!e)return{b:0,w:0,p:0};
+  const need=l.qty*l.fte*frac(l.start,l.end,mo);const b=(I.byLine.get(l.id)||[]).reduce((s,x)=>s+x.fte*frac(x.start,x.end,mo),0);
+  const rem=Math.max(0,need-b);if(e.stage==='Won')return{b,w:rem,p:0};
+  if(measure==='booked')return{b,w:0,p:0};return{b,w:0,p:rem*(measure==='unweighted'?1:prob(S,e)/100)}}
+function compute(S,I,f,months){
+  const util=S.ref.util/100,n=months.length,m=matcher(f);
+  const blank=k=>({key:k,sup:Array(n).fill(0),booked:Array(n).fill(0),won:Array(n).fill(0),pipe:Array(n).fill(0),heads:0});
+  const groups=new Map(),tot=blank('Total');const g=k=>{if(!groups.has(k))groups.set(k,blank(k));return groups.get(k)};
+  for(const p of S.people){if(!m(p))continue;const G=g(groupOf(f,p));G.heads++;tot.heads++;
+    months.forEach((mo,i)=>{const v=p.cap*util*frac(p.start,p.end,mo);G.sup[i]+=v;tot.sup[i]+=v})}
+  for(const l of S.lines){if(!m(l))continue;const G=g(groupOf(f,l));
+    months.forEach((mo,i)=>{const r=lineMonth(S,I,l,mo,f.measure);G.booked[i]+=r.b;G.won[i]+=r.w;G.pipe[i]+=r.p;tot.booked[i]+=r.b;tot.won[i]+=r.w;tot.pipe[i]+=r.p})}
+  const fin=G=>{G.dem=G.sup.map((_,i)=>G.booked[i]+G.won[i]+G.pipe[i]);G.gap=G.sup.map((s,i)=>s-G.dem[i]);return G};
+  const R=S.ref,order=k=>{if(f.group==='loc')return R.locations.indexOf(k);if(f.group==='roleGrade'){const[r,gr]=k.split('|');return R.roles.indexOf(r)*10+R.grades.indexOf(gr)}return R.roles.indexOf(k)};
+  const list=[...groups.values()].map(fin).filter(G=>G.sup.some(v=>v>0.001)||G.dem.some(v=>v>0.001)).sort((a,b)=>order(a.key)-order(b.key));
+  return{groups:list,tot:fin(tot)};
+}
+function bench(S,I,f){
+  const a=TODAY,b=TODAY+55,days=56,util=S.ref.util/100,m=matcher(f);
+  return S.people.filter(m).map(p=>{const bs=I.byPerson.get(p.id)||[];const cap=p.cap*util*overlap(p.start,p.end,a,b)/days;
+    const bk=bs.reduce((s,x)=>s+x.fte*overlap(x.start,x.end,a,b)/days,0);
+    const free=bs.reduce((mx,x)=>Math.max(mx,toDay(x.end||'2099-01-01')),0);
+    return{p,avail:cap-bk,cap,bk,freeFrom:free}}).filter(x=>x.avail>=0.25).sort((x,y)=>y.avail-x.avail);
+}
+function filled(I,l){return(I.byLine.get(l.id)||[]).length}
+if(typeof module!=='undefined'){module.exports={seed,compute,bench,buildMonths,index,filled}}
+
+/* ---------- UI ---------- */
+if(typeof document!=='undefined'){
+window.addEventListener('error',e=>{const m=document.getElementById('main');if(m&&!document.querySelector('.errbar')){const d=document.createElement('div');d.className='errbar';d.textContent='Something went wrong: '+(e.message||'script error')+'. Send me this message and I\'ll fix it.';m.prepend(d)}});
+(function(){
+const KEY='gacp-state-v2',UIKEY='gacp-ui-v2';
+let S;try{const raw=localStorage.getItem(KEY);if(raw)S=JSON.parse(raw)}catch(e){}
+if(!S||S.v!==2)S=seed();
+let I=index(S);
+const save=()=>{I=index(S);try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const MONTHS=buildMonths(12);
+let UI={view:'capacity',cf:{loc:'',role:'',grade:'',skill:'',measure:'weighted',group:'role'},pf:{q:'',loc:'',role:'',grade:'',pool:''},df:{q:'',stage:'',loc:'',role:'',open:false},sel:null,limitP:200,open:new Set()};
+try{const u=JSON.parse(localStorage.getItem(UIKEY)||'null');if(u){UI.view=u.view||UI.view;Object.assign(UI.cf,u.cf||{})}}catch(e){}
+if(['capacity','demand','people','reference'].includes(location.hash.slice(1)))UI.view=location.hash.slice(1);
+const saveUI=()=>{try{localStorage.setItem(UIKEY,JSON.stringify({view:UI.view,cf:UI.cf}))}catch(e){}};
+
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const f1=n=>(Math.round(n*10)/10).toFixed(1);
+const sgn=n=>{const r=Math.round(n*10)/10;return r>0?'+'+r.toFixed(1):r<0?'−'+Math.abs(r).toFixed(1):'0.0'};
+const allSkills=()=>Object.values(S.ref.skills).flat();
+const personById=id=>S.people.find(p=>p.id===id);
+const opts=(list,val,all)=>(all!=null?`<option value="">${esc(all)}</option>`:'')+list.map(o=>{const v=typeof o==='object'?o.v:o,t=typeof o==='object'?o.t:o;return`<option value="${esc(v)}"${String(v)===String(val)?' selected':''}>${esc(t)}</option>`}).join('');
+const fsel=(id,label,list,val,all)=>`<label class="fld"><span>${label}</span><select id="${id}">${opts(list,val,all)}</select></label>`;
+const chips=a=>a.map(s=>`<span class="chip">${esc(s)}</span>`).join('');
+const uid=p=>p+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36);
+function toast(msg){const t=document.createElement('div');t.className='toast';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),1800)}
+let RGB={};function rgbOf(tok){if(RGB[tok])return RGB[tok];const el=document.createElement('i');el.style.color=`var(${tok})`;document.body.appendChild(el);const c=getComputedStyle(el).color;el.remove();const m=c.match(/[\d.]+/g)||[0,0,0];return(RGB[tok]=m.slice(0,3).map(Number))}
+function mix(tok,pct){const a=rgbOf(tok),b=rgbOf('--surface'),t=pct/100;return'rgb('+a.map((x,i)=>Math.round(x*t+b[i]*(1-t))).join(',')+')'}
+const meter=(v,c)=>`<span class="meter"><b class="${v>c+0.01?'overbooked':''}" style="width:${Math.min(100,c?v/c*100:0)}%"></b></span>`;
+const fillBadge=(f,q,won)=>`<span class="fill ${f>=q?'full':f>0?'part':won?'none':''}">${f}/${q} filled</span>`;
+const engLabel=e=>e?esc(e.account)+' · '+esc(e.name):'';
+
+function renderTabs(){
+  const tabs=[['capacity','Capacity view',''],['demand','Demand',S.engagements.length],['people','People',S.people.length],['reference','Reference data','']];
+  document.getElementById('tabs').innerHTML=tabs.map(([k,t,c])=>`<button role="tab" aria-selected="${UI.view===k}" data-act="tab" data-v="${k}">${t}${c!==''?`<span class="ct">${c}</span>`:''}</button>`).join('');
+}
+function render(){RGB={};renderTabs();const m=document.getElementById('main');
+  m.innerHTML=UI.view==='capacity'?viewCapacity():UI.view==='people'?viewPeople():UI.view==='demand'?viewDemand():viewRef();saveUI()}
+
+/* ----- capacity view ----- */
+function openSeats(f){const m=matcher(f||{});return S.lines.filter(l=>{const e=I.eng.get(l.engId);return e&&e.stage==='Won'&&m(l)&&filled(I,l)<l.qty}).sort((a,b)=>toDay(a.start)-toDay(b.start))}
+function viewCapacity(){
+  const f=UI.cf,R=S.ref,C=compute(S,I,f,MONTHS),T=C.tot,bl=bench(S,I,f);
+  const util0=T.sup[0]?(T.booked[0]+T.won[0])/T.sup[0]:0;
+  let worst=null;C.groups.forEach(G=>G.gap.slice(0,6).forEach((v,i)=>{if(v<-0.05&&(!worst||v<worst.v))worst={v,G,i}}));
+  const benchFte=bl.reduce((s,x)=>s+x.avail,0);
+  const unfilled=openSeats(f),openCount=unfilled.reduce((s,l)=>s+l.qty-filled(I,l),0);
+  const gl=k=>f.group==='roleGrade'?k.replace('|',' · '):k;
+  const maxAbs=Math.max(2,...C.groups.flatMap(G=>G.gap.map(Math.abs)));
+  const cell=(G,i,isTot)=>{const v=G.gap[i],a=Math.abs(v),mx=isTot?Math.max(maxAbs,...T.gap.map(Math.abs)):maxAbs;
+    let bg='var(--sunk)',col='var(--fg)';
+    if(a>=0.5){const pct=Math.round(18+Math.min(1,a/mx)*72);bg=mix(v<0?'--short':'--over',pct);if(pct>58)col='var(--on-strong)'}
+    const sel=UI.sel&&UI.sel.k===G.key&&UI.sel.i===i;
+    return`<td class="c${sel?' sel':''}" tabindex="0" data-act="cell" data-k="${esc(G.key)}" data-i="${i}" style="background:${bg};color:${col}" title="${esc(gl(G.key))} · ${MONTHS[i].label}&#10;Capacity ${f1(G.sup[i])} FTE&#10;Booked ${f1(G.booked[i])} · Won unfilled ${f1(G.won[i])} · Pipeline ${f1(G.pipe[i])}">${sgn(v)}</td>`};
+  const measureLbl={booked:'Confirmed only',weighted:'+ weighted pipeline',unweighted:'+ full pipeline'};
+  return`
+  <div class="bar">
+    ${fsel('cf-loc','Location',R.locations,f.loc,'All locations')}
+    ${fsel('cf-role','Role',R.roles,f.role,'All roles')}
+    ${fsel('cf-grade','Grade',R.grades,f.grade,'All grades')}
+    ${fsel('cf-skill','Skill',allSkills(),f.skill,'Any skill')}
+    <div class="fld"><span>Demand counted</span><div class="seg">${['booked','weighted','unweighted'].map(k=>`<button data-act="measure" data-v="${k}" aria-pressed="${f.measure===k}">${measureLbl[k]}</button>`).join('')}</div></div>
+  </div>
+  <div class="tiles">
+    <div class="tile"><div class="k">Capacity · ${MONTHS[0].label}</div><div class="v">${f1(T.sup[0])}<small style="font-size:13px"> FTE</small></div><div class="s">${T.heads} people${R.util<100?` at ${R.util}% bookable`:''}</div></div>
+    <div class="tile"><div class="k">Confirmed utilisation</div><div class="v">${Math.round(util0*100)}%</div><div class="s">${f1(T.booked[0])} booked + ${f1(T.won[0])} won, unfilled</div></div>
+    <div class="tile"><div class="k">Bench · next 8 weeks</div><div class="v">${f1(benchFte)}<small style="font-size:13px"> FTE</small></div><div class="s">${bl.length} people with ≥0.25 FTE free</div></div>
+    <div class="tile${worst?' alert':''}"><div class="k">Largest shortfall · 6 months</div><div class="v">${worst?sgn(worst.v):'None'}</div><div class="s">${worst?esc(gl(worst.G.key))+' · '+MONTHS[worst.i].label:'No group short of capacity'}</div></div>
+  </div>
+  <section class="panel">
+    <div class="ph"><h2>Capacity vs demand by month</h2>
+      <div class="legend"><span><i style="background:var(--accent)"></i>Booked</span><span><i style="background:var(--short)"></i>Won, unfilled</span>${f.measure!=='booked'?`<span><i style="background:var(--muted);opacity:.45"></i>Pipeline${f.measure==='weighted'?' (weighted)':''}</span>`:''}<span><i style="background:var(--fg);height:2px;vertical-align:3px"></i>Capacity</span></div></div>
+    <div class="scroll">${chart(T)}</div>
+  </section>
+  <section class="panel">
+    <div class="ph"><h2>Surplus and shortfall (FTE)</h2>
+      <div class="seg">${[['role','By role'],['roleGrade','Role × grade'],['loc','By location']].map(([k,t])=>`<button data-act="group" data-v="${k}" aria-pressed="${f.group===k}">${t}</button>`).join('')}</div></div>
+    <div class="legend" style="margin-bottom:10px"><span><i style="background:var(--short)"></i>Short of people</span><span><i style="background:var(--sunk)"></i>Within ±0.5 FTE</span><span><i style="background:var(--over)"></i>Surplus (bench risk)</span><span>Tap a cell for the people and demand behind it.</span></div>
+    <div class="scroll"><table class="heat"><thead><tr><th>${f.group==='loc'?'Location':'Role'}</th>${MONTHS.map(m=>`<th class="n" style="text-align:center">${m.label}</th>`).join('')}</tr></thead>
+    <tbody>${C.groups.map(G=>`<tr><td class="g">${esc(gl(G.key))}<small>${G.heads} people</small></td>${MONTHS.map((_,i)=>cell(G,i)).join('')}</tr>`).join('')}
+    <tr class="tot"><td class="g">Total<small>${T.heads} people</small></td>${MONTHS.map((_,i)=>cell(T,i,true)).join('')}</tr></tbody></table></div>
+    ${detail(C)}
+  </section>
+  <div class="two">
+    <section class="panel"><div class="ph"><h2>On the bench · next 8 weeks</h2><span class="hint">${bl.length} people</span></div>
+      ${bl.length?`<div class="scroll"><table><thead><tr><th>Name</th><th>Role · grade</th><th>Location</th><th class="n">Free FTE</th><th>Free from</th></tr></thead><tbody>
+      ${bl.slice(0,25).map(x=>`<tr class="click" data-act="editP" data-id="${x.p.id}"><td>${esc(x.p.name)}</td><td>${esc(x.p.role)}<br><span class="hint">${esc(x.p.grade)}</span></td><td>${esc(x.p.loc)}${x.p.pool!=='In-country'?`<br><span class="hint">${esc(x.p.pool)}</span>`:''}</td><td class="n">${f1(x.avail)}</td><td class="mono">${x.bk>0.01&&x.freeFrom?fmtDate(iso(x.freeFrom+1)):'Now'}</td></tr>`).join('')}
+      </tbody></table></div>${bl.length>25?`<div class="more">Showing 25 of ${bl.length}. Narrow the filters to see more.</div>`:''}`:'<div class="empty">Nobody has free capacity in the next 8 weeks.</div>'}
+    </section>
+    <section class="panel"><div class="ph"><h2>Won work with open seats</h2><span class="hint">${openCount} seats</span></div>
+      ${unfilled.length?`<div class="scroll"><table><thead><tr><th>Account · engagement</th><th>Role · grade</th><th>Open</th><th>Starts</th></tr></thead><tbody>
+      ${unfilled.slice(0,25).map(l=>`<tr class="click" data-act="staff" data-id="${l.id}"><td>${engLabel(I.eng.get(l.engId))}</td><td>${esc(l.role)}<br><span class="hint">${esc(l.grade)} · ${esc(l.loc)}${l.skills.length?' · '+esc(l.skills.join(', ')):''}</span></td><td class="mono">${l.qty-filled(I,l)} of ${l.qty}</td><td class="mono">${fmtDate(l.start)}</td></tr>`).join('')}
+      </tbody></table></div>${unfilled.length>25?`<div class="more">Showing 25 of ${unfilled.length}.</div>`:''}`:'<div class="empty">Every won seat has someone assigned.</div>'}
+    </section>
+  </div>`;
+}
+function chart(T){
+  const W=820,H=250,L=44,Rr=12,Tp=12,B=28,n=MONTHS.length,iw=(W-L-Rr)/n;
+  const mx=Math.max(1,...T.sup,...T.dem)*1.08;const step=[1,2,5,10,20,25,50,100,200,500].find(s=>mx/s<=5)||1000;const top=Math.ceil(mx/step)*step;
+  const y=v=>Tp+(H-Tp-B)*(1-v/top);let s=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:560px;display:block" role="img" aria-label="Monthly capacity against demand">`;
+  for(let v=0;v<=top+1e-9;v+=step){s+=`<line x1="${L}" x2="${W-Rr}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)" stroke-width="1"/><text x="${L-8}" y="${y(v)+4}" text-anchor="end">${v}</text>`}
+  MONTHS.forEach((m,i)=>{const x=L+i*iw+iw*.18,w=iw*.64;let base=0;
+    [['booked','var(--accent)',1],['won','var(--short)',1],['pipe','var(--muted)',.45]].forEach(([k,c,o])=>{const v=T[k][i];if(v<=0)return;s+=`<rect x="${x}" y="${y(base+v)}" width="${w}" height="${y(base)-y(base+v)}" fill="${c}" fill-opacity="${o}"><title>${m.label}: ${k==='pipe'?'Pipeline':k==='won'?'Won, unfilled':'Booked'} ${f1(v)} FTE</title></rect>`;base+=v});
+    s+=`<text x="${L+i*iw+iw/2}" y="${H-9}" text-anchor="middle">${m.label}</text>`});
+  s+=`<polyline points="${T.sup.map((v,i)=>`${L+i*iw+iw/2},${y(v)}`).join(' ')}" fill="none" stroke="var(--fg)" stroke-width="2"/>`;
+  T.sup.forEach((v,i)=>{s+=`<circle cx="${L+i*iw+iw/2}" cy="${y(v)}" r="3" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"><title>${MONTHS[i].label}: capacity ${f1(v)} FTE</title></circle>`});
+  return s+'</svg>';
+}
+function detail(C){
+  if(!UI.sel)return'';const f=UI.cf,{k,i}=UI.sel,mo=MONTHS[i];if(!mo)return'';
+  const G=k==='Total'?C.tot:C.groups.find(g=>g.key===k);if(!G)return'';
+  const m=matcher(f),inG=x=>k==='Total'||groupOf(f,x)===k,util=S.ref.util/100;
+  const ppl=S.people.filter(p=>m(p)&&inG(p)&&frac(p.start,p.end,mo)>0).map(p=>{const cap=p.cap*util*frac(p.start,p.end,mo);const bk=(I.byPerson.get(p.id)||[]).reduce((s,x)=>s+x.fte*frac(x.start,x.end,mo),0);return{p,cap,bk}}).sort((a,b)=>(b.cap-b.bk)-(a.cap-a.bk));
+  const dem=S.lines.filter(l=>m(l)&&inG(l)&&frac(l.start,l.end,mo)>0).map(l=>{const r=lineMonth(S,I,l,mo,f.measure);return{l,e:I.eng.get(l.engId),v:r.b+r.w+r.p,open:r.w+r.p}}).filter(x=>x.v>0.001).sort((a,b)=>b.open-a.open);
+  const lim=40,gl=f.group==='roleGrade'?k.replace('|',' · '):k;
+  return`<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:14px">
+    <div class="ph"><h2>${esc(gl)} · ${mo.label}</h2><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><span class="hint mono">capacity ${f1(G.sup[i])} · demand ${f1(G.dem[i])} · gap ${sgn(G.gap[i])}</span><button class="btn ghost" data-act="closeSel">Close</button></div></div>
+    <div class="two">
+      <div><div class="hint" style="margin-bottom:6px">People (${ppl.length}), most free first</div><div class="scroll"><table><thead><tr><th>Name</th><th>Grade</th><th>Location</th><th class="n">Booked</th></tr></thead><tbody>
+      ${ppl.slice(0,lim).map(x=>`<tr class="click" data-act="editP" data-id="${x.p.id}"><td>${esc(x.p.name)}${f.group!=='role'&&f.group!=='roleGrade'||k==='Total'?`<br><span class="hint">${esc(x.p.role)}</span>`:''}</td><td>${esc(x.p.grade)}</td><td>${esc(x.p.loc)}</td><td class="n">${meter(x.bk,x.cap)}${f1(x.bk)}/${f1(x.cap)}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">Nobody in this group.</td></tr>'}
+      </tbody></table></div>${ppl.length>lim?`<div class="more">Showing ${lim} of ${ppl.length}.</div>`:''}</div>
+      <div><div class="hint" style="margin-bottom:6px">Resource plan lines (${dem.length}), most open first</div><div class="scroll"><table><thead><tr><th>Account · engagement</th><th>Stage</th><th class="n">FTE</th></tr></thead><tbody>
+      ${dem.slice(0,lim).map(x=>`<tr class="click" data-act="staff" data-id="${x.l.id}"><td>${engLabel(x.e)}<br><span class="hint">${x.l.qty} × ${esc(x.l.role)} · ${esc(x.l.grade)} · ${esc(x.l.loc)}</span></td><td>${esc(x.e.stage)}<br>${fillBadge(filled(I,x.l),x.l.qty,x.e.stage==='Won')}</td><td class="n">${f1(x.v)}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">No demand in this group.</td></tr>'}
+      </tbody></table></div>${dem.length>lim?`<div class="more">Showing ${lim} of ${dem.length}.</div>`:''}</div>
+    </div></div>`;
+}
+
+/* ----- people ----- */
+function viewPeople(){
+  const f=UI.pf,R=S.ref,m0=MONTHS[0],q=f.q.toLowerCase();
+  const rows=S.people.filter(p=>(!f.loc||p.loc===f.loc)&&(!f.role||p.role===f.role)&&(!f.grade||p.grade===f.grade)&&(!f.pool||p.pool===f.pool)&&(!q||(p.name+' '+p.skills.join(' ')).toLowerCase().includes(q)));
+  return`<div class="bar">
+    <label class="fld" style="flex:1 1 200px"><span>Search</span><input type="search" id="pf-q" value="${esc(f.q)}" placeholder="Name or skill"></label>
+    ${fsel('pf-loc','Location',R.locations,f.loc,'All')}${fsel('pf-pool','Pool',R.pools,f.pool,'All')}${fsel('pf-role','Role',R.roles,f.role,'All')}${fsel('pf-grade','Grade',R.grades,f.grade,'All')}
+    <button class="btn primary" data-act="newP">Add person</button></div>
+  <section class="panel"><div class="ph"><h2>People</h2><span class="hint">${rows.length} of ${S.people.length} · booked shown for ${m0.label}</span></div>
+  <div class="scroll"><table><thead><tr><th>Name</th><th>Role</th><th>Grade</th><th>Location · pool</th><th>Skills</th><th class="n">Capacity</th><th class="n">Booked</th><th>Start</th><th>End</th></tr></thead><tbody>
+  ${rows.slice(0,UI.limitP).map(p=>{const cap=p.cap*frac(p.start,p.end,m0);const bk=(I.byPerson.get(p.id)||[]).reduce((s,x)=>s+x.fte*frac(x.start,x.end,m0),0);
+    return`<tr class="click" data-act="editP" data-id="${p.id}"><td style="white-space:nowrap">${esc(p.name)}</td><td>${esc(p.role)}</td><td>${esc(p.grade)}</td><td style="white-space:nowrap">${esc(p.loc)}<br><span class="hint">${esc(p.pool)}</span></td><td>${chips(p.skills)}</td><td class="n">${p.cap<1?`${Math.round(p.cap*100)}%`:'Full'}</td><td class="n">${meter(bk,cap||p.cap)}${cap?Math.round(bk/cap*100)+'%':'—'}</td><td class="mono" style="white-space:nowrap">${toDay(p.start)>TODAY?`<b>${fmtDate(p.start)}</b>`:fmtDate(p.start)}</td><td class="mono" style="white-space:nowrap">${p.end?`<b style="color:var(--short)">${fmtDate(p.end)}</b>`:''}</td></tr>`}).join('')||'<tr><td colspan="9" class="empty">No people match these filters.</td></tr>'}
+  </tbody></table></div>${rows.length>UI.limitP?`<div class="more">Showing ${UI.limitP} of ${rows.length}. <button class="btn ghost" data-act="moreP">Show all</button></div>`:''}</section>`;
+}
+
+/* ----- demand: engagements → resource plan lines → bookings ----- */
+function engStats(e){const ls=I.byEng.get(e.id)||[];let hc=0,fl=0,fte=0;for(const l of ls){hc+=l.qty;fl+=Math.min(l.qty,filled(I,l));fte+=l.qty*l.fte}return{ls,hc,fl,fte}}
+function viewDemand(){
+  const f=UI.df,R=S.ref,q=f.q.toLowerCase(),lm=matcher({loc:f.loc,role:f.role});
+  const rows=S.engagements.filter(e=>{if(f.stage&&e.stage!==f.stage)return false;if(q&&!(e.account+' '+e.name+' '+e.opp).toLowerCase().includes(q))return false;
+      const ls=I.byEng.get(e.id)||[];if((f.loc||f.role)&&!ls.some(lm))return false;if(f.open&&!ls.some(l=>filled(I,l)<l.qty))return false;return true})
+    .sort((a,b)=>(a.stage==='Won'?0:1)-(b.stage==='Won'?0:1)||toDay(a.start)-toDay(b.start));
+  let hc=0,fl=0,nl=0;rows.forEach(e=>{const s=engStats(e);hc+=s.hc;fl+=s.fl;nl+=s.ls.length});
+  return`<div class="bar">
+    <label class="fld" style="flex:1 1 200px"><span>Search</span><input type="search" id="df-q" value="${esc(f.q)}" placeholder="Account, engagement or opportunity ID"></label>
+    ${fsel('df-stage','Stage',R.stages.map(s=>s.name),f.stage,'All stages')}
+    ${fsel('df-loc','Needs location',R.locations,f.loc,'Any')}${fsel('df-role','Needs role',R.roles,f.role,'Any')}
+    <label class="tog${f.open?' on':''}" style="margin:0 0 2px"><input type="checkbox" id="df-open"${f.open?' checked':''}>Has open seats</label>
+    <button class="btn primary" data-act="newE">Add engagement</button></div>
+  <div class="summary"><span><b>${rows.length}</b> engagements</span><span><b>${nl}</b> plan lines</span><span><b>${hc}</b> seats</span><span><b>${fl}</b> filled</span><span><b>${hc-fl}</b> open</span></div>
+  ${rows.map(engBlock).join('')||'<div class="panel empty">No engagements match these filters.</div>'}`;
+}
+function engBlock(e){
+  const R=S.ref,{ls,hc,fl,fte}=engStats(e),open=UI.open.has(e.id),won=e.stage==='Won';
+  let body='';
+  if(open){
+    body=`<div class="eb"><div class="scroll"><table class="grid"><thead><tr><th>Role</th><th>Grade</th><th>Location</th><th>Skills</th><th class="n">Qty</th><th class="n">FTE each</th><th>Start</th><th>End</th><th>Filled</th><th></th></tr></thead><tbody>
+    ${ls.map(l=>`<tr>
+      <td><select data-lid="${l.id}" data-lf="role" aria-label="Role">${opts(R.roles,l.role)}</select></td>
+      <td><select data-lid="${l.id}" data-lf="grade" aria-label="Grade">${opts(R.grades,l.grade)}</select></td>
+      <td><select data-lid="${l.id}" data-lf="loc" aria-label="Location">${opts(R.locations,l.loc)}</select></td>
+      <td class="sk" data-act="lineSkills" data-id="${l.id}" title="Edit skills">${l.skills.length?chips(l.skills):'<span class="chip">+ skills</span>'}</td>
+      <td class="n"><input type="number" min="1" max="200" data-lid="${l.id}" data-lf="qty" value="${l.qty}" aria-label="Quantity"></td>
+      <td class="n"><select data-lid="${l.id}" data-lf="fte" aria-label="FTE each">${opts([1,0.8,0.6,0.5,0.4,0.2].map(v=>({v,t:v.toFixed(1)})),l.fte)}</select></td>
+      <td><input type="date" data-lid="${l.id}" data-lf="start" value="${esc(l.start)}" aria-label="Start"></td>
+      <td><input type="date" data-lid="${l.id}" data-lf="end" value="${esc(l.end)}" aria-label="End"></td>
+      <td><button class="btn" style="padding:3px 8px" data-act="staff" data-id="${l.id}">${fillBadge(filled(I,l),l.qty,won)}</button></td>
+      <td><button class="btn ghost" style="padding:3px 8px" data-act="delLine" data-id="${l.id}" aria-label="Remove line">${UI.armDel===l.id?'Confirm':'✕'}</button></td></tr>`).join('')||'<tr><td colspan="10" class="empty">No resource plan yet. Add a line, apply a team template, or paste from Excel.</td></tr>'}
+    </tbody></table></div>
+    <div class="ebar"><button class="btn" data-act="addLine" data-id="${e.id}">Add line</button>
+      <select id="tpl-${e.id}" aria-label="Team template">${opts(R.templates.map((t,i)=>({v:i,t:t.name+' ('+t.lines.reduce((s,l)=>s+l.qty,0)+')'})),'','Apply team template…')}</select>
+      <select id="tplc-${e.id}" aria-label="Cloud for template">${opts(['AWS','Azure','GCP'],'Azure','No cloud skill')}</select>
+      <button class="btn" data-act="applyTpl" data-id="${e.id}">Apply</button>
+      <button class="btn" data-act="paste" data-id="${e.id}">Paste from Excel</button></div></div>`;
+  }
+  return`<div class="eng${open?' open':''}"><div class="eh">
+    <button class="t" data-act="toggleEng" data-id="${e.id}" aria-expanded="${open}"><span class="caret">▸</span><span><b>${esc(e.account)} · ${esc(e.name)}</b><span class="hint mono">${esc(e.opp)} · ${fmtDate(e.start)} – ${fmtDate(e.end)} · ${esc(e.home)}</span></span></button>
+    <div class="meta">
+      <select data-eid="${e.id}" data-ef="stage" aria-label="Stage">${opts(R.stages.map(s=>({v:s.name,t:s.name+' · '+(s.name===e.stage?prob(S,e):s.prob)+'%'})),e.stage)}</select>
+      <span class="mono hint">${hc} seats · ${f1(fte)} FTE</span>${fillBadge(fl,hc,won)}
+      <button class="btn ghost" data-act="editE" data-id="${e.id}">Edit</button></div></div>${body}</div>`;
+}
+
+/* ----- reference ----- */
+function viewRef(){
+  const R=S.ref;
+  const list=(items,kind)=>`<ul>${items.map(x=>`<li><span>${esc(x)}</span><span class="hint mono">${(kind==='role'?S.people.filter(p=>p.role===x):kind==='grade'?S.people.filter(p=>p.grade===x):S.people.filter(p=>p.skills.includes(x))).length} people</span></li>`).join('')}</ul>`;
+  return`<div class="ref">
+  <section class="panel"><div class="ph"><h2>Roles</h2></div>${list(R.roles,'role')}
+    <div class="addrow"><input type="text" id="new-role" placeholder="New role, e.g. AI Product Owner"><button class="btn" data-act="addRole">Add</button></div></section>
+  <section class="panel"><div class="ph"><h2>Grades</h2><span class="hint">Most junior first</span></div>${list(R.grades,'grade')}</section>
+  <section class="panel"><div class="ph"><h2>Skills</h2></div>
+    ${Object.entries(R.skills).map(([c,a])=>`<div class="hint" style="text-transform:uppercase;letter-spacing:.05em;font-weight:600;margin:6px 0 2px">${esc(c)}</div>${list(a,'skill')}`).join('')}
+    <div class="addrow"><select id="new-skill-cat">${opts(Object.keys(R.skills),'')}</select><input type="text" id="new-skill" placeholder="New skill"><button class="btn" data-act="addSkill">Add</button></div></section>
+  <section class="panel"><div class="ph"><h2>Team templates</h2><span class="hint">Applied to an engagement's resource plan</span></div>
+    <ul>${R.templates.map(t=>`<li style="display:block"><b>${esc(t.name)}</b> <span class="hint">· ${t.loc==='home'?'engagement country':esc(t.loc)} · ${t.lines.reduce((s,l)=>s+l.qty,0)} seats</span><br><span class="hint">${t.lines.map(l=>`${l.qty}× ${esc(l.role.replace('AI ',''))} ${esc(l.grade)}${l.fte<1?' @'+l.fte:''}`).join(', ')}</span></li>`).join('')}</ul></section>
+  <section class="panel"><div class="ph"><h2>Sales stages</h2><span class="hint">Default probability</span></div>
+    <ul>${R.stages.map((s,i)=>`<li><span>${esc(s.name)}</span>${s.name==='Won'?'<span class="mono">100%</span>':`<span><input type="number" id="stage-${i}" data-stage="${i}" min="0" max="100" step="5" value="${s.prob}" style="width:72px"> %</span>`}</li>`).join('')}</ul>
+    <p class="hint">Probability is set once per engagement and applies to every unfilled seat in its resource plan. Booked seats always count at 100%.</p></section>
+  <section class="panel"><div class="ph"><h2>Bookable utilisation</h2></div>
+    <p class="hint" style="margin-top:0">The share of each person's capacity you plan to book. Setting 85% means one full-time person counts as 0.85 FTE of supply, leaving room for leave, training and pre-sales.</p>
+    <div class="addrow"><input type="number" id="util" min="50" max="100" step="5" value="${R.util}" style="max-width:100px"><span class="hint" style="align-self:center">%</span></div></section>
+  </div>`;
+}
+
+/* ----- drawers ----- */
+let D=null;
+const capOpts=[{v:1,t:'1.0 FTE'},{v:0.8,t:'0.8 FTE'},{v:0.6,t:'0.6 FTE'},{v:0.5,t:'0.5 FTE'},{v:0.4,t:'0.4 FTE'},{v:0.2,t:'0.2 FTE'}];
+function skillPicker(sel){return`<div class="full fld"><span>Skills</span><div class="skills">${Object.entries(S.ref.skills).map(([c,a])=>`<div><div class="cat">${esc(c)}</div>${a.map(s=>`<label class="tog${sel.includes(s)?' on':''}"><input type="checkbox" data-skill="${esc(s)}"${sel.includes(s)?' checked':''}>${esc(s)}</label>`).join('')}</div>`).join('')}</div></div>`}
+const readSkills=()=>[...document.querySelectorAll('#drawer-body [data-skill]')].filter(x=>x.checked).map(x=>x.dataset.skill);
+function openDrawer(kind,id){
+  let draft=null;
+  if(kind==='P'){const p=id&&personById(id);draft=p?JSON.parse(JSON.stringify(p)):{name:'',role:S.ref.roles[0],grade:'Mid',loc:'UK',pool:'In-country',skills:[],cap:1,start:iso(TODAY),end:''}}
+  if(kind==='E'){const e=id&&I.eng.get(id);draft=e?{...e}:{account:'',name:'',opp:'',stage:'Qualify',prob:null,start:iso(TODAY+30),end:iso(TODAY+210),home:'UK'}}
+  if(kind==='K'){draft={skills:[...I.line.get(id).skills]}}
+  D={kind,id,draft,err:'',confirmDel:false,others:false,pasteText:''};drawer();
+}
+function drawer(){
+  const L=document.getElementById('layer');if(!D){L.innerHTML='';return}
+  const d=D.draft,R=S.ref;let title='',body='',foot='';
+  const saveBtns=`<span class="sp"></span><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="save">Save</button>`;
+  if(D.kind==='P'){
+    title=D.id?'Edit person':'Add person';
+    body=`<label class="fld full"><span>Name</span><input type="text" id="f-name" value="${esc(d.name)}"></label>
+    ${fsel('f-role','Role',R.roles,d.role)}${fsel('f-grade','Grade',R.grades,d.grade)}
+    ${fsel('f-loc','Location',R.locations,d.loc)}${fsel('f-pool','Pool',R.pools,d.pool)}
+    ${fsel('f-cap','Availability',capOpts,d.cap)}<div></div>
+    <label class="fld"><span>Start date</span><input type="date" id="f-start" value="${esc(d.start)}"></label>
+    <label class="fld"><span>End date (if leaving)</span><input type="date" id="f-end" value="${esc(d.end)}"></label>
+    ${skillPicker(d.skills)}`;
+    if(D.id){const bs=I.byPerson.get(D.id)||[];body+=`<div class="full fld"><span>Bookings</span>${bs.length?bs.map(b=>{const l=I.line.get(b.lineId),e=l&&I.eng.get(l.engId);return`<div class="cand"><div class="who">${engLabel(e)}<br><span class="hint mono">${f1(b.fte)} FTE · ${fmtDate(b.start)} – ${fmtDate(b.end)}</span></div><button class="btn ghost" data-act="unbook" data-id="${b.id}">Remove</button></div>`}).join(''):'<span class="hint">Not booked on anything.</span>'}</div>`}
+    foot=(D.id?`<button class="btn danger" data-act="del">${D.confirmDel?'Confirm delete':'Delete'}</button>`:'')+saveBtns;
+  }else if(D.kind==='E'){
+    title=D.id?'Edit engagement':'Add engagement';
+    body=`<label class="fld full"><span>Account</span><input type="text" id="f-account" value="${esc(d.account)}" list="acc-list"><datalist id="acc-list">${[...new Set(S.engagements.map(e=>e.account))].sort().map(a=>`<option value="${esc(a)}">`).join('')}</datalist></label>
+    <label class="fld full"><span>Engagement name</span><input type="text" id="f-name" value="${esc(d.name)}"></label>
+    <label class="fld"><span>Opportunity ID</span><input type="text" id="f-opp" value="${esc(d.opp)}" placeholder="Salesforce ID"></label>
+    ${fsel('f-home','Home country',R.locations,d.home)}
+    ${fsel('f-stage','Stage',R.stages.map(s=>({v:s.name,t:`${s.name} (${s.prob}%)`})),d.stage)}
+    <label class="fld"><span>Probability override</span><input type="number" id="f-prob" min="0" max="100" step="5" value="${d.prob??''}" placeholder="Stage default"></label>
+    <label class="fld"><span>Start date</span><input type="date" id="f-start" value="${esc(d.start)}"></label>
+    <label class="fld"><span>End date</span><input type="date" id="f-end" value="${esc(d.end)}"></label>
+    <p class="hint full" style="margin:0">${D.id?'Changing dates also moves any plan lines that still use the old engagement dates.':'After saving, build the resource plan under the engagement: add lines, apply a team template or paste from Excel.'}</p>`;
+    foot=(D.id?`<button class="btn danger" data-act="del">${D.confirmDel?'Confirm delete':'Delete'}</button>`:'')+saveBtns;
+  }else if(D.kind==='K'){
+    const l=I.line.get(D.id);title='Skills for this line';
+    body=`<p class="hint full" style="margin:0">${engLabel(I.eng.get(l.engId))} · ${l.qty} × ${esc(l.role)} · ${esc(l.grade)}</p>${skillPicker(d.skills)}`;foot=saveBtns;
+  }else if(D.kind==='X'){
+    const e=I.eng.get(D.id);title='Paste resource plan';
+    body=`<p class="hint full" style="margin:0">${engLabel(e)}. Copy rows from Excel with these columns: <b>Role, Grade, Location, Qty, FTE</b>, and optionally <b>Skills</b> separated by semicolons. Start and end default to the engagement dates.</p>
+    <label class="fld full"><span>Rows</span><textarea id="f-paste" placeholder="AI Engineer&#9;Mid&#9;India&#9;6&#9;1&#9;Azure&#10;AI Architect&#9;Senior&#9;UK&#9;1&#9;0.5&#9;Azure;LangGraph">${esc(D.pasteText)}</textarea></label>`;
+    foot=`<span class="sp"></span><button class="btn" data-act="close">Cancel</button><button class="btn primary" data-act="doPaste">Add lines</button>`;
+  }else if(D.kind==='S'){
+    const l=I.line.get(D.id),e=I.eng.get(l.engId),bs=I.byLine.get(l.id)||[];title='Staff this line';
+    const ws=toDay(l.start),we=toDay(l.end),len=Math.max(1,we-ws+1),gi=g=>R.grades.indexOf(g);
+    const taken=new Set(bs.map(b=>b.personId));
+    const cands=S.people.filter(p=>p.role===l.role&&(D.others||p.loc===l.loc)&&!taken.has(p.id)).map(p=>{const cap=p.cap*overlap(p.start,p.end,ws,we)/len;const bk=(I.byPerson.get(p.id)||[]).reduce((s,x)=>s+x.fte*overlap(x.start,x.end,ws,we)/len,0);
+      const gd=Math.abs(gi(p.grade)-gi(l.grade)),sk=l.skills.filter(k=>p.skills.includes(k)).length;return{p,free:cap-bk,gd,sk,score:(cap-bk>=l.fte-0.01?4:0)+(gd===0?3:gd===1?1:0)+sk*1.5+(p.loc===l.loc?2:0)}})
+      .filter(x=>x.free>0.05).sort((a,b)=>b.score-a.score||b.free-a.free).slice(0,30);
+    const full=bs.length>=l.qty;
+    body=`<div class="full"><b>${engLabel(e)}</b><div class="hint">${l.qty} × ${esc(l.role)} · ${esc(l.grade)} · ${esc(l.loc)} · ${f1(l.fte)} FTE · ${fmtDate(l.start)} – ${fmtDate(l.end)}${l.skills.length?' · '+esc(l.skills.join(', ')):''}</div><div style="margin-top:6px">${fillBadge(bs.length,l.qty,e.stage==='Won')}${e.stage!=='Won'?' <span class="hint">Booking people on pipeline work counts them as fully booked.</span>':''}</div></div>
+    <div class="full fld"><span>Booked</span>${bs.length?bs.map(b=>{const p=personById(b.personId);return`<div class="cand"><div class="who">${esc(p?p.name:'Unknown')}<br><span class="hint">${p?esc(p.grade)+' · '+esc(p.loc):''} · ${f1(b.fte)} FTE · ${fmtDate(b.start)} – ${fmtDate(b.end)}</span></div><button class="btn ghost" data-act="unbook" data-id="${b.id}">Remove</button></div>`}).join(''):'<span class="hint">Nobody booked yet.</span>'}</div>
+    <div class="full fld"><span>Best matches ${full?'(all seats filled)':''}</span>
+      <label class="tog${D.others?' on':''}" style="align-self:flex-start"><input type="checkbox" id="f-others"${D.others?' checked':''}>Include other locations</label>
+      ${cands.map(x=>`<div class="cand"><div class="who">${esc(x.p.name)}<br><span class="hint">${esc(x.p.grade)}${x.gd?' (grade off by '+x.gd+')':''} · ${esc(x.p.loc)}${x.p.pool!=='In-country'?' '+esc(x.p.pool):''} · ${f1(Math.max(0,x.free))} free${l.skills.length?' · '+(x.sk?`<span class="ok">skills ✓</span>`:'skills ✗'):''}</span></div><button class="btn${full?'':' primary'}" data-act="book" data-id="${x.p.id}"${full?' disabled':''}>Book</button></div>`).join('')||'<span class="hint">Nobody with this role has free time across these dates.</span>'}</div>`;
+    foot=`<span class="sp"></span><button class="btn" data-act="close">Done</button>`;
+  }
+  L.innerHTML=`<div class="ov" data-act="close"></div><aside class="drawer" role="dialog" aria-label="${esc(title)}">
+    <div class="dh"><h3>${esc(title)}</h3><button class="btn ghost" data-act="close">Close</button></div>
+    <div class="db" id="drawer-body">${body}${D.err?`<div class="err">${esc(D.err)}</div>`:''}</div><div class="df">${foot}</div></aside>`;
+}
+const val=id=>{const e=document.getElementById(id);return e?e.value:''};
+function saveDrawer(){
+  const d=D.draft;let msg='Saved';
+  if(D.kind==='P'){
+    Object.assign(d,{name:val('f-name').trim(),role:val('f-role'),grade:val('f-grade'),loc:val('f-loc'),pool:val('f-pool'),cap:+val('f-cap'),start:val('f-start'),end:val('f-end'),skills:readSkills()});
+    if(!d.name){D.err='Add a name before saving.';return drawer()}
+    if(d.end&&d.start&&toDay(d.end)<toDay(d.start)){D.err='The end date is before the start date.';return drawer()}
+    if(D.id)Object.assign(personById(D.id),d);else{d.id=uid('P');S.people.push(d);msg='Person added'}
+  }else if(D.kind==='E'){
+    const pr=val('f-prob');
+    Object.assign(d,{account:val('f-account').trim(),name:val('f-name').trim(),opp:val('f-opp').trim(),home:val('f-home'),stage:val('f-stage'),prob:pr===''?null:Math.max(0,Math.min(100,+pr)),start:val('f-start'),end:val('f-end')});
+    if(!d.account||!d.name){D.err='Add an account and engagement name before saving.';return drawer()}
+    if(!d.start||!d.end||toDay(d.end)<toDay(d.start)){D.err='Set a start date and an end date after it.';return drawer()}
+    if(D.id){const e=I.eng.get(D.id);(I.byEng.get(e.id)||[]).forEach(l=>{if(l.start===e.start)l.start=d.start;if(l.end===e.end)l.end=d.end});Object.assign(e,d)}
+    else{d.id=uid('E');S.engagements.push(d);UI.open.add(d.id);UI.df={q:'',stage:'',loc:'',role:'',open:false};msg='Engagement added'}
+  }else if(D.kind==='K'){I.line.get(D.id).skills=readSkills()}
+  save();D=null;drawer();render();toast(msg);
+}
+function doPaste(){
+  const txt=val('f-paste');D.pasteText=txt;const e=I.eng.get(D.id),R=S.ref,errs=[],out=[];
+  const find=(list,v)=>{v=(v||'').trim().toLowerCase();return list.find(x=>x.toLowerCase()===v)||list.find(x=>x.toLowerCase().replace(/^ai /,'')===v.replace(/^ai /,''))||list.find(x=>x.toLowerCase().startsWith(v)&&v.length>2)};
+  txt.split(/\r?\n/).map(r=>r.trim()).filter(Boolean).forEach((r,i)=>{const c=r.split(/\t|,/).map(x=>x.trim());
+    if(i===0&&/role/i.test(c[0]))return;
+    const role=find(R.roles,c[0]),grade=find(R.grades,c[1]),loc=find(R.locations,c[2]),qty=parseInt(c[3]||'1',10),fte=parseFloat(c[4]||'1');
+    const skills=(c[5]||'').split(';').map(s=>find(allSkills(),s)).filter(Boolean);
+    if(!role||!grade||!loc||!(qty>0)||!(fte>0&&fte<=1)){errs.push(`Row ${i+1}: couldn't read "${r.slice(0,40)}"`);return}
+    out.push({id:uid('L'),engId:e.id,role,grade,loc,qty,fte,skills,start:e.start,end:e.end})});
+  if(!out.length){D.err=errs[0]||'Paste at least one row.';return drawer()}
+  S.lines.push(...out);save();D=null;drawer();render();toast(out.length+' lines added'+(errs.length?`, ${errs.length} skipped`:''));
+}
+
+/* ----- events ----- */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-act]');if(!t||t.disabled)return;const a=t.dataset.act,id=t.dataset.id;
+  if(a!=='delLine'&&UI.armDel){UI.armDel=null}
+  switch(a){
+  case'tab':UI.view=t.dataset.v;UI.sel=null;render();window.scrollTo(0,0);break;
+  case'measure':UI.cf.measure=t.dataset.v;render();break;
+  case'group':UI.cf.group=t.dataset.v;UI.sel=null;render();break;
+  case'cell':{const k=t.dataset.k,i=+t.dataset.i;UI.sel=UI.sel&&UI.sel.k===k&&UI.sel.i===i?null:{k,i};render();break}
+  case'closeSel':UI.sel=null;render();break;
+  case'editP':openDrawer('P',id);break;
+  case'newP':openDrawer('P');break;
+  case'editE':openDrawer('E',id);break;
+  case'newE':openDrawer('E');break;
+  case'staff':openDrawer('S',id);break;
+  case'lineSkills':openDrawer('K',id);break;
+  case'paste':openDrawer('X',id);break;
+  case'doPaste':doPaste();break;
+  case'close':D=null;drawer();break;
+  case'save':saveDrawer();break;
+  case'toggleEng':UI.open.has(id)?UI.open.delete(id):UI.open.add(id);render();break;
+  case'addLine':{const en=I.eng.get(id),last=(I.byEng.get(id)||[]).slice(-1)[0];S.lines.push({id:uid('L'),engId:id,role:last?last.role:S.ref.roles[0],grade:last?last.grade:'Mid',loc:last?last.loc:en.home,qty:1,fte:1,skills:last?[...last.skills]:[],start:en.start,end:en.end});save();render();break}
+  case'applyTpl':{const ti=val('tpl-'+id);if(ti===''){toast('Pick a template first');break}const tp=S.ref.templates[+ti],cloud=val('tplc-'+id),en=I.eng.get(id);
+    tp.lines.forEach(x=>S.lines.push({id:uid('L'),engId:id,role:x.role,grade:x.grade,qty:x.qty,fte:x.fte,loc:tp.loc==='home'?en.home:tp.loc,skills:cloud&&TECH.includes(x.role)?[cloud]:[],start:en.start,end:en.end}));
+    save();render();toast(tp.name+' added');break}
+  case'delLine':if(UI.armDel!==id){UI.armDel=id;render()}else{S.lines=S.lines.filter(l=>l.id!==id);S.bookings=S.bookings.filter(b=>b.lineId!==id);UI.armDel=null;save();render();toast('Line removed')}break;
+  case'book':{const l=I.line.get(D.id),p=personById(id);S.bookings.push({id:uid('B'),lineId:l.id,personId:p.id,fte:l.fte,start:p.start&&toDay(p.start)>toDay(l.start)?p.start:l.start,end:p.end&&toDay(p.end)<toDay(l.end)?p.end:l.end});save();drawer();render();toast(p.name+' booked');break}
+  case'unbook':S.bookings=S.bookings.filter(b=>b.id!==id);save();drawer();render();toast('Booking removed');break;
+  case'del':if(!D.confirmDel){D.confirmDel=true;drawer();break}
+    if(D.kind==='P'){S.people=S.people.filter(p=>p.id!==D.id);S.bookings=S.bookings.filter(b=>b.personId!==D.id)}
+    else{const lids=new Set((I.byEng.get(D.id)||[]).map(l=>l.id));S.engagements=S.engagements.filter(x=>x.id!==D.id);S.lines=S.lines.filter(l=>!lids.has(l.id));S.bookings=S.bookings.filter(b=>!lids.has(b.lineId))}
+    save();D=null;drawer();render();toast('Deleted');break;
+  case'moreP':UI.limitP=1e9;render();break;
+  case'reset':if(t.dataset.armed){S=seed();save();UI.sel=null;UI.open.clear();delete t.dataset.armed;t.textContent='Reset sample data';render();toast('Sample data restored')}else{t.dataset.armed='1';t.textContent='Confirm reset';setTimeout(()=>{if(t.dataset.armed){delete t.dataset.armed;t.textContent='Reset sample data'}},4000)}break;
+  case'addRole':{const v=val('new-role').trim();if(v&&!S.ref.roles.includes(v)){S.ref.roles.push(v);save();render();toast('Role added')}break}
+  case'addSkill':{const c=val('new-skill-cat'),v=val('new-skill').trim();if(v&&!allSkills().includes(v)){S.ref.skills[c].push(v);save();render();toast('Skill added')}break}
+  }
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('td.c'))e.target.click();if(e.key==='Escape'&&D){D=null;drawer()}});
+document.addEventListener('change',e=>{
+  const t=e.target,id=t.id;
+  if(t.dataset.skill!=null){t.closest('.tog').classList.toggle('on',t.checked);return}
+  if(t.dataset.lid){const l=I.line.get(t.dataset.lid),f=t.dataset.lf;let v=t.value;
+    if(f==='qty'){v=Math.max(1,Math.min(200,parseInt(v,10)||1))}else if(f==='fte')v=+v;else if((f==='start'||f==='end')&&!v){render();return}
+    l[f]=v;if(f==='start'&&toDay(l.end)<toDay(l.start))l.end=l.start;if(f==='end'&&toDay(l.end)<toDay(l.start))l.start=l.end;save();render();return}
+  if(t.dataset.eid){const en=I.eng.get(t.dataset.eid);en.stage=t.value;if(t.value==='Won')en.prob=null;save();render();toast(en.name+' moved to '+t.value);return}
+  if(id==='f-others'){D.others=t.checked;drawer();return}
+  const cf={'cf-loc':'loc','cf-role':'role','cf-grade':'grade','cf-skill':'skill'}[id];if(cf){UI.cf[cf]=t.value;UI.sel=null;render();return}
+  const pf={'pf-loc':'loc','pf-role':'role','pf-grade':'grade','pf-pool':'pool'}[id];if(pf){UI.pf[pf]=t.value;render();return}
+  const df={'df-stage':'stage','df-loc':'loc','df-role':'role'}[id];if(df){UI.df[df]=t.value;render();return}
+  if(id==='df-open'){UI.df.open=t.checked;render();return}
+  if(t.dataset.stage!=null){S.ref.stages[+t.dataset.stage].prob=Math.max(0,Math.min(100,+t.value||0));save();toast('Probability updated');return}
+  if(id==='util'){S.ref.util=Math.max(50,Math.min(100,+t.value||100));save();toast('Bookable utilisation set to '+S.ref.util+'%');return}
+});
+let qt;document.addEventListener('input',e=>{const id=e.target.id;if(id!=='pf-q'&&id!=='df-q')return;clearTimeout(qt);qt=setTimeout(()=>{if(id==='pf-q')UI.pf.q=e.target.value;else UI.df.q=e.target.value;render();const el=document.getElementById(id);if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length)}},200)});
+try{render()}catch(err){document.getElementById('main').innerHTML='<div class="errbar">Could not load: '+esc(err.message)+'. Send me this message and I\'ll fix it.</div>'}
+try{matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>render())}catch(e){}
+})()}
+</script>
+</body>
+</html>
